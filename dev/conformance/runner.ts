@@ -69,7 +69,7 @@ const protoDefinition = protobufRoot.loadSync(
   path.join(__dirname, 'test-definition.proto')
 );
 
-const TEST_SUITE_TYPE = protoDefinition.lookupType('tests.TestSuite');
+const TEST_SUITE_TYPE = protoDefinition.lookupType('tests.TestFile');
 const STRUCTURED_QUERY_TYPE = protoDefinition.lookupType(
   'google.firestore.v1.StructuredQuery'
 );
@@ -148,7 +148,10 @@ const convertInput = {
   precondition: (precondition: string) => {
     const deepCopy = JSON.parse(JSON.stringify(precondition));
     if (deepCopy.updateTime) {
-      deepCopy.lastUpdateTime = Timestamp.fromProto(deepCopy.updateTime);
+      deepCopy.lastUpdateTime = deepCopy.updateTime;
+      // const date = new Date(Date.parse(deepCopy.updateTime));
+      deepCopy.lastUpdateTime = Timestamp.fromProto({seconds: deepCopy.lastUpdateTime.seconds});
+      // console.log('!!!updateTime', Date.parse(deepCopy.updateTime), deepCopy.lastUpdateTime);
       delete deepCopy.updateTime;
     }
     return deepCopy;
@@ -253,6 +256,7 @@ function commitHandler(
   spec: ConformanceProto
 ): UnaryMethod<api.ICommitRequest, api.ICommitResponse> {
   return request => {
+    console.log('specReq', spec.request);
     const actualCommit = COMMIT_REQUEST_TYPE.fromObject(request);
     const expectedCommit = COMMIT_REQUEST_TYPE.fromObject(spec.request);
     expect(actualCommit).to.deep.equal(expectedCommit);
@@ -516,15 +520,22 @@ function runTest(spec: ConformanceProto) {
 
 describe('Conformance Tests', () => {
   const loadTestCases = () => {
-    const binaryProtoData = require('fs').readFileSync(
-      path.join(__dirname, 'test-suite.binproto')
-    );
-
-    // We don't have type information for the conformance proto.
     // tslint:disable-next-line:no-any
-    const testSuite: any = TEST_SUITE_TYPE.decode(binaryProtoData);
+    let testDataJson: any[] = [];
+    const fs = require('fs');
 
-    return testSuite.tests;
+    const testPath = path.join(__dirname, 'conformance-tests');
+    // const fileNames = fs.readdirSync(testPath);
+    const fileNames = ['delete-time-precond.json'];
+
+    for (const fileName of fileNames) {
+      const testFilePath = path.join(__dirname, 'conformance-tests', fileName);
+      const singleTest = JSON.parse(fs.readFileSync(testFilePath));
+      const testFile = TEST_SUITE_TYPE.fromObject(singleTest);
+      testDataJson = testDataJson.concat(testFile);
+    }
+    
+    return testDataJson[0].tests;
   };
 
   for (const testCase of loadTestCases()) {
